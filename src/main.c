@@ -480,6 +480,7 @@ main(int argc, char *argv[])
     gboolean ret;
     gboolean verbose = FALSE;
     gboolean version = FALSE;
+    gboolean yes = TRUE;
     guint retval = 1;
 
     const GOptionEntry options[] = {
@@ -487,6 +488,8 @@ main(int argc, char *argv[])
             "Show extra debugging information", NULL },
         { "version", '\0', 0, G_OPTION_ARG_NONE, &version,
             "Show version", NULL },
+        { "yes", 'y', 0, G_OPTION_ARG_NONE, &yes,
+            "Does nothing, we always assume yes", NULL },
         { NULL}
     };
     g_autoptr(GError) error = NULL;
