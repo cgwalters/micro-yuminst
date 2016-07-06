@@ -1,43 +1,8 @@
-# rpm-ostree Overview
+# micro-yuminst
 
-New! See the docs online at [Read The Docs (rpm-ostree)](https://rpm-ostree.readthedocs.org/en/latest/ )
+A minimal `yum -y install` for Docker containers that uses
+[libhif](https://github.com/rpm-software-management/libhif)
+and hence doesn't require Python.
 
------
-
-rpm-ostree is a hybrid image/package system.  It uses
-[OSTree](https://wiki.gnome.org/Projects/OSTree) as an image format,
-and uses RPM as a component model.
-
-The project aims to bring together a hybrid of image-like upgrade
-features (reliable replication, atomicity), with package-like
-flexibility (introspecting trees to find package sets, package
-layering, partial live updates).
-
-**Features:**
-
- - Atomic upgrades and rollback for host system updates
- - A server side tool to consume RPMs and commit them to an OSTree repository
- - A system daemon to consume ostree commits as updates
-
-Projects using rpm-ostree
--------------------------
-
-[Project Atomic](http://www.projectatomic.io/) uses rpm-ostree to
-provide a minimal host for Docker formatted Linux containers.
-Replicating a base immutable OS, then using Docker for applications.
-
-Using rpm-ostree to build OS images/trees
------------------------------------------
-
-See [Compose Server](docs/manual/compose-server.md).
-
-Hacking
--------
-
-See [Hacking](HACKING.md).
-
-Contributing
-------------
-
-See [Contributing](docs/CONTRIBUTING.md).
-
+You are likely also interested in
+[centosmin](https://gitlab.com/cgwalters/centosmin).
