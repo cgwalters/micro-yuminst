@@ -187,6 +187,43 @@ hif_cmd_run(HifUtilPrivate *priv, const gchar *command, gchar **values, GError *
     return FALSE;
 }
 
+static gint
+pkg_array_compare (HifPackage **p_pkg1,
+                   HifPackage **p_pkg2)
+{
+  return hif_package_cmp (*p_pkg1, *p_pkg2);
+}
+
+static void
+print_transaction (HifContext   *hifctx)
+{
+  guint i;
+  GPtrArray *install = NULL;
+
+  install = hif_goal_get_packages (hif_context_get_goal (hifctx),
+                                   HIF_PACKAGE_INFO_INSTALL,
+                                   HIF_PACKAGE_INFO_REINSTALL,
+                                   HIF_PACKAGE_INFO_DOWNGRADE,
+                                   HIF_PACKAGE_INFO_UPDATE,
+                                   -1);
+
+  g_print ("Transaction: %u packages\n", install->len);
+  
+  if (install->len == 0)
+    g_print ("  (empty)\n");
+  else
+    {
+      g_ptr_array_sort (install, (GCompareFunc) pkg_array_compare);
+
+      for (i = 0; i < install->len; i++)
+        {
+          HifPackage *pkg = install->pdata[i];
+          g_print ("  %s (%s)\n", hif_package_get_nevra (pkg), hif_package_get_reponame (pkg));
+        }
+    }
+  g_ptr_array_unref (install);
+}
+
 /**
  * hif_cmd_install:
  **/
@@ -211,7 +248,13 @@ hif_cmd_install(HifUtilPrivate *priv, gchar **values, GError **error)
         if (!hif_context_install(priv->context, values[i], error))
             return FALSE;
     }
-    return hif_context_run(priv->context, NULL, error);
+    if (!hif_goal_depsolve (hif_context_get_goal (priv->context), HIF_INSTALL, error))
+        return FALSE;
+    print_transaction(priv->context);
+    if (!hif_context_run(priv->context, NULL, error))
+        return FALSE;
+    g_print ("Complete.\n");
+    return TRUE;
 }
 
 /**
