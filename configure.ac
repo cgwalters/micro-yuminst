@@ -32,10 +32,6 @@ PKG_PROG_PKG_CONFIG
 
 PKG_CHECK_MODULES(PKGDEP_HIF, [gio-unix-2.0 >= 2.40.0 libhif])
 
-AC_PATH_PROG([XSLTPROC], [xsltproc])
-
-GLIB_TESTS
-
 AC_CONFIG_FILES([
 Makefile
 ])
