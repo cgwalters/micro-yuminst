@@ -5,4 +5,4 @@ A minimal `yum -y install` for Docker containers that uses
 and hence doesn't require Python.
 
 You are likely also interested in
-[centosmin](https://gitlab.com/cgwalters/centosmin).
+[centosmin](https://github.com/cgwalters/centos-dockerbase-minimal).
