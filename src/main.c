@@ -31,10 +31,15 @@
 
 static gboolean opt_version;
 static gboolean opt_yes = TRUE;
+static char **opt_setopts;
+
+/* Set via setopt */
+static gboolean opt_nodocs;
 
 static GOptionEntry global_entries[] = {
   { "version", 0, 0, G_OPTION_ARG_NONE, &opt_version, "Print version information and exit", NULL },
   { "yes", 'y', 0, G_OPTION_ARG_NONE, &opt_yes, "Does nothing, we always assume yes", NULL },
+  { "setopt", 0, 0, G_OPTION_ARG_STRING_ARRAY, &opt_setopts, "Transaction flags, like tsflags=nodocs", NULL },
   { NULL }
 };
 
@@ -64,7 +69,22 @@ option_context_parse (GOptionContext *context,
   g_option_context_add_main_entries (context, global_entries, NULL);
   
   if (!g_option_context_parse (context, argc, argv, error))
-      return FALSE;
+    return FALSE;
+
+  for (char **iter = opt_setopts; iter && *iter; iter++)
+    {
+      const char *opt = *iter;
+      if (strcmp (opt, "tsflags=nodocs") == 0)
+        {
+          opt_nodocs = TRUE;
+        }
+      else
+        {
+          g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                       "Unknown option in --setopt=%s", opt);
+          return FALSE;
+        }
+    }
 
   if (opt_version)
     {
@@ -127,6 +147,7 @@ context_new (void)
   hif_context_set_keep_cache (ctx, FALSE);
   hif_context_set_cache_age (ctx, 0);
   hif_context_set_yumdb_enabled (ctx, FALSE);
+
   return ctx;
 }
 
@@ -136,6 +157,7 @@ builtin_install (int argc, char **argv, GCancellable *cancellable, GError **erro
   guint i;
   g_autoptr(GOptionContext) option_context = NULL;
   g_autoptr(HifContext) ctx = context_new ();
+  HifTransaction *txn;
 
   option_context = g_option_context_new ("[PKG...] - Install");
   if (!option_context_parse (option_context, NULL, &argc, &argv, cancellable, error))
@@ -160,6 +182,9 @@ builtin_install (int argc, char **argv, GCancellable *cancellable, GError **erro
   if (!hif_goal_depsolve (hif_context_get_goal (ctx), HIF_INSTALL, error))
     return FALSE;
   print_transaction (ctx);
+  txn = hif_context_get_transaction (ctx);
+  if (opt_nodocs)
+    hif_transaction_set_flags (txn, hif_transaction_get_flags (txn) | HIF_TRANSACTION_FLAG_NODOCS);
   if (!hif_context_run (ctx, NULL, error))
     return FALSE;
   g_print ("Complete.\n");
