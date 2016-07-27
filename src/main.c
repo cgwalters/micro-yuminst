@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
  *
  * Copyright (C) 2010-2015 Richard Hughes <richard@hughsie.com>
  * Copyright (C) 2016 Colin Walters <walters@verbum.org>
@@ -29,162 +29,49 @@
 
 #include <libhif/libhif.h>
 
-#if !GLIB_CHECK_VERSION(2, 43, 4)
-#define g_autofree _GLIB_CLEANUP(g_autoptr_cleanup_generic_gfree)
-#endif
+static gboolean opt_version;
+static gboolean opt_yes = TRUE;
 
-#define HIF_ERROR_INVALID_ARGUMENTS     0
-#define HIF_ERROR_NO_SUCH_CMD           1
+static GOptionEntry global_entries[] = {
+  { "version", 0, 0, G_OPTION_ARG_NONE, &opt_version, "Print version information and exit", NULL },
+  { "yes", 'y', 0, G_OPTION_ARG_NONE, &opt_yes, "Does nothing, we always assume yes", NULL },
+  { NULL }
+};
 
-typedef struct {
-    HifContext      *context;
-    GOptionContext  *option_context;
-    GPtrArray       *cmd_array;
-    gboolean         value_only;
-    gchar          **filters;
-} HifUtilPrivate;
-
-typedef gboolean(*HifUtilPrivateCb) (HifUtilPrivate    *cmd,
-                                     gchar        **values,
-                                     GError        **error);
+static int builtin_install (int argc, char **argv, GCancellable *cancellable, GError **error);
 
 typedef struct {
-    gchar               *name;
-    gchar               *arguments;
-    gchar               *description;
-    HifUtilPrivateCb     callback;
-} HifUtilItem;
+  const char *name;
+  int (*fn) (int argc, char **argv, GCancellable *cancellable, GError **error);
+} Command;
 
-/**
- * hif_cmd_item_free:
- **/
-static void
-hif_cmd_item_free(HifUtilItem *item)
-{
-    g_free(item->name);
-    g_free(item->arguments);
-    g_free(item->description);
-    g_free(item);
-}
+static Command supported_commands[] = {
+  { "install", builtin_install },
+  { NULL }
+};
 
-/*
- * hif_sort_command_name_cb:
- */
-static gint
-hif_sort_command_name_cb(HifUtilItem **item1, HifUtilItem **item2)
-{
-    return g_strcmp0((*item1)->name,(*item2)->name);
-}
-
-/**
- * hif_cmd_add:
- **/
-static void
-hif_cmd_add(GPtrArray *array,
-            const gchar *name,
-            const gchar *arguments,
-            const gchar *description,
-            HifUtilPrivateCb callback)
-{
-    guint i;
-    HifUtilItem *item;
-    g_auto(GStrv) names = NULL;
-
-    g_return_if_fail(name != NULL);
-    g_return_if_fail(description != NULL);
-    g_return_if_fail(callback != NULL);
-
-    /* add each one */
-    names = g_strsplit(name, ",", -1);
-    for (i = 0; names[i] != NULL; i++) {
-        item = g_new0(HifUtilItem, 1);
-        item->name = g_strdup(names[i]);
-        if (i == 0) {
-            item->description = g_strdup(description);
-        } else {
-            item->description = g_strdup_printf("Alias to %s",
-                                 names[0]);
-        }
-        item->arguments = g_strdup(arguments);
-        item->callback = callback;
-        g_ptr_array_add(array, item);
-    }
-}
-
-/**
- * hif_cmd_get_descriptions:
- **/
-static gchar *
-hif_cmd_get_descriptions(GPtrArray *array)
-{
-    guint i;
-    guint j;
-    guint len;
-    const guint max_len = 35;
-    HifUtilItem *item;
-    GString *string;
-
-    /* print each command */
-    string = g_string_new("");
-    for (i = 0; i < array->len; i++) {
-        item = g_ptr_array_index(array, i);
-        g_string_append(string, "  ");
-        g_string_append(string, item->name);
-        len = strlen(item->name) + 2;
-        if (item->arguments != NULL) {
-            g_string_append(string, " ");
-            g_string_append(string, item->arguments);
-            len += strlen(item->arguments) + 1;
-        }
-        if (len < max_len) {
-            for (j = len; j < max_len + 1; j++)
-                g_string_append_c(string, ' ');
-            g_string_append(string, item->description);
-            g_string_append_c(string, '\n');
-        } else {
-            g_string_append_c(string, '\n');
-            for (j = 0; j < max_len + 1; j++)
-                g_string_append_c(string, ' ');
-            g_string_append(string, item->description);
-            g_string_append_c(string, '\n');
-        }
-    }
-
-    /* remove trailing newline */
-    if (string->len > 0)
-        g_string_set_size(string, string->len - 1);
-
-    return g_string_free(string, FALSE);
-}
-
-/**
- * hif_cmd_run:
- **/
 static gboolean
-hif_cmd_run(HifUtilPrivate *priv, const gchar *command, gchar **values, GError **error)
+option_context_parse (GOptionContext *context,
+                      const GOptionEntry *main_entries,
+                      int *argc,
+                      char ***argv,
+                      GCancellable *cancellable,
+                      GError **error)
 {
-    guint i;
-    HifUtilItem *item;
-    g_autoptr(GString) string = NULL;
+  if (main_entries != NULL)
+    g_option_context_add_main_entries (context, main_entries, NULL);
+  
+  g_option_context_add_main_entries (context, global_entries, NULL);
+  
+  if (!g_option_context_parse (context, argc, argv, error))
+      return FALSE;
 
-    /* find command */
-    for (i = 0; i < priv->cmd_array->len; i++) {
-        item = g_ptr_array_index(priv->cmd_array, i);
-        if (g_strcmp0(item->name, command) == 0)
-            return item->callback(priv, values, error);
+  if (opt_version)
+    {
+      g_print ("%s\n", PACKAGE_STRING);
+      exit (EXIT_SUCCESS);
     }
-
-    /* not found */
-    string = g_string_new("");
-    g_string_append(string, "Command not found, valid commands are:\n");
-    for (i = 0; i < priv->cmd_array->len; i++) {
-        item = g_ptr_array_index(priv->cmd_array, i);
-        g_string_append_printf(string, " * %s %s\n",
-                               item->name,
-                               item->arguments ? item->arguments : "");
-    }
-    g_set_error_literal(error, HIF_ERROR, HIF_ERROR_NO_SUCH_CMD, string->str);
-    return FALSE;
+  return TRUE;
 }
 
 static gint
@@ -224,46 +111,98 @@ print_transaction (HifContext   *hifctx)
   g_ptr_array_unref (install);
 }
 
-/**
- * hif_cmd_install:
- **/
-static gboolean
-hif_cmd_install(HifUtilPrivate *priv, gchar **values, GError **error)
+static HifContext *
+context_new (void)
 {
-    guint i;
+  HifContext *ctx = hif_context_new ();
 
-    if (g_strv_length(values) < 1) {
-        g_set_error_literal(error,
-                            HIF_ERROR,
-                            HIF_ERROR_INVALID_ARGUMENTS,
-                            "Not enough arguments, "
-                            "expected package or group name");
-        return FALSE;
-    }
-
-    /* install each package */
-    if (!hif_context_setup(priv->context, NULL, error))
-        return FALSE;
-    for (i = 0; values[i] != NULL; i++) {
-        if (!hif_context_install(priv->context, values[i], error))
-            return FALSE;
-    }
-    if (!hif_goal_depsolve (hif_context_get_goal (priv->context), HIF_INSTALL, error))
-        return FALSE;
-    print_transaction(priv->context);
-    if (!hif_context_run(priv->context, NULL, error))
-        return FALSE;
-    g_print ("Complete.\n");
-    return TRUE;
+  hif_context_set_repo_dir (ctx, "/etc/yum.repos.d/");
+#define CACHEDIR "/var/cache/yum"
+  hif_context_set_cache_dir (ctx, CACHEDIR "/metadata");
+  hif_context_set_solv_dir (ctx, CACHEDIR "/solv");
+  hif_context_set_lock_dir (ctx, CACHEDIR "/lock");
+#undef CACHEDIR
+  hif_context_set_check_disk_space (ctx, FALSE);
+  hif_context_set_check_transaction (ctx, TRUE);
+  hif_context_set_keep_cache (ctx, FALSE);
+  hif_context_set_cache_age (ctx, 0);
+  hif_context_set_yumdb_enabled (ctx, FALSE);
+  return ctx;
 }
 
-/**
- * hif_cmd_ignore_cb:
- **/
-static void
-hif_cmd_ignore_cb(const gchar *log_domain, GLogLevelFlags log_level,
-                  const gchar *message, gpointer user_data)
+static int
+builtin_install (int argc, char **argv, GCancellable *cancellable, GError **error)
 {
+  guint i;
+  g_autoptr(GOptionContext) option_context = NULL;
+  g_autoptr(HifContext) ctx = context_new ();
+
+  option_context = g_option_context_new ("[PKG...] - Install");
+  if (!option_context_parse (option_context, NULL, &argc, &argv, cancellable, error))
+    return FALSE;
+
+  if (argc <= 1)
+    {
+      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                           "Not enough arguments, "
+                           "expected package or group name");
+      return FALSE;
+    }
+
+  /* install each package */
+  if (!hif_context_setup(ctx, NULL, error))
+    return FALSE;
+  for (i = 1; i < argc; i++)
+    {
+      if (!hif_context_install(ctx, argv[i], error))
+        return FALSE;
+    }
+  if (!hif_goal_depsolve (hif_context_get_goal (ctx), HIF_INSTALL, error))
+    return FALSE;
+  print_transaction (ctx);
+  if (!hif_context_run (ctx, NULL, error))
+    return FALSE;
+  g_print ("Complete.\n");
+  return TRUE;
+}
+
+static Command *
+lookup_command_of_type (Command *commands,
+                        const char *name)
+{
+  Command *command = commands;
+
+  while (command->name) {
+      if (g_strcmp0 (name, command->name) == 0)
+          return command;
+      command++;
+  }
+
+  return NULL;
+}
+
+static GOptionContext *
+option_context_new_with_commands (void)
+{
+  Command *command = supported_commands;
+  GOptionContext *context;
+  GString *summary;
+
+  context = g_option_context_new ("COMMAND");
+
+  summary = g_string_new ("Builtin Commands:");
+
+  while (command->name != NULL)
+    {
+      g_string_append_printf (summary, "\n  %s", command->name);
+      command++;
+    }
+
+  g_option_context_set_summary (context, summary->str);
+
+  g_string_free (summary, TRUE);
+
+  return context;
 }
 
 /**
@@ -272,108 +211,93 @@ hif_cmd_ignore_cb(const gchar *log_domain, GLogLevelFlags log_level,
 int
 main(int argc, char *argv[])
 {
-    HifUtilPrivate *priv;
-    gboolean ret;
-    gboolean verbose = FALSE;
-    gboolean version = FALSE;
-    gboolean yes = TRUE;
-    guint retval = 1;
+  const char *command_name = NULL;
+  guint retval = 1;
+  Command *command;
+  int in, out;
+  g_autoptr(GOptionContext) option_context = NULL;
+  g_autoptr(GCancellable) cancellable = NULL;
+  g_autoptr(GError) local_error = NULL;
+  GError **error = &local_error;
 
-    const GOptionEntry options[] = {
-        { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose,
-            "Show extra debugging information", NULL },
-        { "version", '\0', 0, G_OPTION_ARG_NONE, &version,
-            "Show version", NULL },
-        { "yes", 'y', 0, G_OPTION_ARG_NONE, &yes,
-            "Does nothing, we always assume yes", NULL },
-        { NULL}
-    };
-    g_autoptr(GError) error = NULL;
-    g_autofree gchar *cmd_descriptions = NULL;
-    g_autofree gchar *filter = NULL;
+  setlocale(LC_ALL, "");
 
-    setlocale(LC_ALL, "");
-
-    /* create helper object */
-    priv = g_new0(HifUtilPrivate, 1);
-
-    /* add commands */
-    priv->cmd_array = g_ptr_array_new_with_free_func((GDestroyNotify) hif_cmd_item_free);
-    hif_cmd_add(priv->cmd_array,
-                "install", "[pkgname]",
-                "Install a package or group name",
-                hif_cmd_install);
-
-    /* sort by command name */
-    g_ptr_array_sort(priv->cmd_array,
-             (GCompareFunc) hif_sort_command_name_cb);
-
-    /* get a list of the commands */
-    priv->option_context = g_option_context_new(NULL);
-    cmd_descriptions = hif_cmd_get_descriptions(priv->cmd_array);
-    g_option_context_set_summary(priv->option_context, cmd_descriptions);
-
-    g_option_context_add_main_entries(priv->option_context, options, NULL);
-    ret = g_option_context_parse(priv->option_context, &argc, &argv, &error);
-    if (!ret) {
-        g_print("Failed to parse arguments: %s\n", error->message);
-        goto out;
-    }
-
-    /* add filter if specified */
-    priv->context = hif_context_new();
-
-    hif_context_set_repo_dir(priv->context, "/etc/yum.repos.d/");
-#define CACHEDIR "/var/cache/yum"
-    hif_context_set_cache_dir(priv->context, CACHEDIR "/metadata");
-    hif_context_set_solv_dir(priv->context, CACHEDIR "/solv");
-    hif_context_set_lock_dir(priv->context, CACHEDIR "/lock");
-#undef CACHEDIR
-    hif_context_set_check_disk_space(priv->context, FALSE);
-    hif_context_set_check_transaction(priv->context, TRUE);
-    hif_context_set_keep_cache(priv->context, FALSE);
-    hif_context_set_cache_age(priv->context, 0);
-    hif_context_set_yumdb_enabled(priv->context, FALSE);
-
-    /* set verbose? */
-    if (verbose) {
-        g_setenv("G_MESSAGES_DEBUG", "all", FALSE);
-    } else {
-        g_log_set_handler(G_LOG_DOMAIN, G_LOG_LEVEL_DEBUG,
-                          hif_cmd_ignore_cb, NULL);
-    }
-
-    /* get version */
-    if (version) {
-        g_print("Version:\t%s\n", PACKAGE_VERSION);
-        goto out;
-    }
-
-    /* run the specified command */
-    ret = hif_cmd_run(priv, argv[1],(gchar**) &argv[2], &error);
-    if (!ret) {
-        if (g_error_matches(error, HIF_ERROR, HIF_ERROR_NO_SUCH_CMD)) {
-            g_autofree gchar *tmp = NULL;
-            tmp = g_option_context_get_help(priv->option_context, TRUE, NULL);
-            g_print("%s", tmp);
-        } else {
-            g_print("%s\n", error->message);
+  /*
+   * Parse the global options. We rearrange the options as
+   * necessary, in order to pass relevant options through
+   * to the commands, but also have them take effect globally.
+   */
+  for (in = 1, out = 1; in < argc; in++, out++)
+    {
+      /* The non-option is the command, take it out of the arguments */
+      if (argv[in][0] != '-')
+        {
+          if (command_name == NULL) {
+            command_name = argv[in];
+            out--;
+            continue;
+          }
         }
-        goto out;
+      else if (g_str_equal (argv[in], "--"))
+        {
+          break;
+        }
+        
+      argv[out] = argv[in];
+    }
+  
+  argc = out;
+
+  command = lookup_command_of_type (supported_commands, command_name);
+
+  if (!command)
+    {
+      g_autofree char *help = NULL;
+
+      option_context = option_context_new_with_commands ();
+
+      /* This will not return for some options (e.g. --version). */
+      (void) option_context_parse (option_context, global_entries, &argc, &argv,
+                                   NULL, NULL);
+      if (command_name == NULL)
+        {
+          local_error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_FAILED,
+                                             "No command specified");
+        }
+      else
+        {
+          local_error = g_error_new (G_IO_ERROR, G_IO_ERROR_FAILED,
+                                     "Unknown command '%s'", command_name);
+        }
+
+      help = g_option_context_get_help (option_context, FALSE, NULL);
+      g_printerr ("This is micro-yuminst, which implements a subset of `yum`.\n"
+                  "For more information, see: https://github.com/cgwalters/micro-yuminst\n"
+                  "%s", help);
+      retval = 0;
+      goto out;
     }
 
-    /* success */
-    retval = 0;
-out:
-    if (priv != NULL) {
-        if (priv->context != NULL)
-            g_object_unref(priv->context);
-        if (priv->cmd_array != NULL)
-            g_ptr_array_unref(priv->cmd_array);
-        g_strfreev(priv->filters);
-        g_option_context_free(priv->option_context);
-        g_free(priv);
+  if (!command->fn (argc, argv, cancellable, error))
+    goto out;
+
+  /* success */
+  retval = 0;
+ out:
+  if (local_error != NULL)
+    {
+      int is_tty = isatty (1);
+      const char *prefix = "";
+      const char *suffix = "";
+      if (is_tty)
+        {
+          prefix = "\x1b[31m\x1b[1m"; /* red, bold */
+          suffix = "\x1b[22m\x1b[0m"; /* bold off, color reset */
+        }
+      g_printerr ("%serror: %s%s\n", prefix, suffix, local_error->message);
+      g_error_free (local_error);
+      return 1;
     }
-    return retval;
+  return retval;
 }
 
