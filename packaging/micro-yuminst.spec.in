@@ -6,7 +6,24 @@ License:        LGPLv2+
 URL:            https://gitlab.com/cgwalters/micro-yuminst
 Source0:        %{name}-%{version}.tar.xz
 BuildRequires: autoconf automake libtool git
-BuildRequires: pkgconfig(libhif)
+
+# libhif
+BuildRequires: gtk-doc
+BuildRequires: pkgconfig(librepo)
+BuildRequires: cmake
+BuildRequires: pkgconfig(expat)
+BuildRequires: pkgconfig(check)
+BuildRequires: python-devel
+BuildRequires: python-sphinx
+%if (0%{?rhel} != 0 && 0%{?rhel} <= 7)
+BuildRequires: libsolv-devel
+%else
+BuildRequires: pkgconfig(libsolv)
+%endif
+
+# libhif bundling
+# We're using RPATH to pick up our bundled version
+%global __requires_exclude ^libhif[.]so[.].*$
 
 %description
 %{summary}
@@ -23,6 +40,7 @@ env NOCONFIGURE=1 ./autogen.sh
 
 %install
 %make_install
+find $RPM_BUILD_ROOT -name '*.la' -delete
 ln -s micro-yuminst $RPM_BUILD_ROOT/%{_bindir}/yum
 
 %files
@@ -30,3 +48,4 @@ ln -s micro-yuminst $RPM_BUILD_ROOT/%{_bindir}/yum
 %license COPYING
 %{_bindir}/micro-yuminst
 %{_bindir}/yum
+%{_libdir}/%{name}/
