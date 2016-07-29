@@ -30,7 +30,35 @@ LT_INIT([disable-static])
 
 PKG_PROG_PKG_CONFIG
 
-PKG_CHECK_MODULES(PKGDEP_HIF, [gio-unix-2.0 >= 2.40.0 libhif])
+PKG_CHECK_MODULES(PKGDEP_HIF, [gio-unix-2.0 >= 2.44.0 rpm librepo])
+dnl bundled libhif
+PKGDEP_HIF_CFLAGS="-I $(pwd)/libhif -I $(pwd)/libhif-build $PKGDEP_HIF_CFLAGS"
+PKGDEP_HIF_LIBS="-L$(pwd)/libhif-build/libhif -lhif $PKGDEP_HIF_LIBS"
+
+dnl Try to automatically determine cmake type from CFLAGS
+if $(echo $CFLAGS |grep -q -e "-O0"); then
+  cmake_args="-DCMAKE_BUILD_TYPE=Debug \
+        -DCMAKE_C_FLAGS_DEBUG:STRING='-ggdb -O0' \
+        -DCMAKE_CXX_FLAGS_DEBUG:STRING=-ggdb -O0'"
+  export cmake_args
+else
+  cmake_args=-DCMAKE_BUILD_TYPE=RelWithDebugInfo
+  export cmake_args
+fi  
+
+dnl I picked /usr/libexec/ just because we need an
+dnl arbitrary path - we don't actually install there.
+(set -euo pipefail; mkdir -p libhif-build && cd libhif-build &&
+ set -x && 
+ cmake \
+     -DCMAKE_INSTALL_PREFIX:PATH=/usr/libexec/$PACKAGE \
+     -DINCLUDE_INSTALL_DIR:PATH=/usr/libexec/$PACKAGE/include \
+     -DLIB_INSTALL_DIR:PATH=/usr/libexec/$PACKAGE \
+     -DSYSCONF_INSTALL_DIR:PATH=/usr/libexec/$PACKAGE/etc \
+     -DSHARE_INSTALL_PREFIX:PATH=/usr/libexec/$PACKAGE/share \
+     -DBUILD_SHARED_LIBS:BOOL=ON \
+     ${cmake_args} ../libhif) || exit 1
+
 
 AC_CONFIG_FILES([
 Makefile

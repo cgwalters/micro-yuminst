@@ -1,3 +1,5 @@
+# Makefile for C source code
+#
 # Copyright (C) 2016 Colin Walters <walters@verbum.org>
 #
 # This library is free software; you can redistribute it and/or
@@ -15,12 +17,18 @@
 # Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA.
 
-bin_PROGRAMS += micro-yuminst
+libhif.so.3:
+	cd libhif-build && $(MAKE)
+	ln -sf libhif-build/libhif/libhif.so.3 .
+CLEANFILES += libhif.so.3
+GITIGNOREFILES += libhif-build/
 
-micro_yuminst_SOURCES = src/main.c
+install-libhif-hook:
+	install -d -m 0755 $(DESTDIR)$(libdir)/$(PACKAGE)
+	install -m 0755 $$(readlink libhif.so.3) $(DESTDIR)$(libdir)/$(PACKAGE)
+INSTALL_DATA_HOOKS += install-libhif-hook
 
-micro_yuminst_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/src $(PKGDEP_HIF_CFLAGS)
-micro_yuminst_LDADD = $(PKGDEP_HIF_LIBS)
-micro_yuminst_LDFLAGS = "-Wl,-rpath=$(libdir)/$(PACKAGE)"
-
-EXTRA_micro_yuminst_DEPENDENCIES = libhif.so.3
+clean-local: clean-local-hif
+.PHONY: clean-local-hif
+clean-local-hif:
+	cd libhif-build && $(MAKE) clean

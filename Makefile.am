@@ -23,7 +23,7 @@ ACLOCAL_AMFLAGS += -I m4 ${ACLOCAL_FLAGS}
 AM_CPPFLAGS += -DDATADIR='"$(datadir)"' \
 	-DLIBEXECDIR='"$(libexecdir)"' \
 	-DLOCALEDIR=\"$(datadir)/locale\" \
-	-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_40 -DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_40
+	-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_44 -DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_44
 AM_CFLAGS += -std=gnu99 $(WARN_CFLAGS)
 
 EXTRA_DIST += autogen.sh COPYING
@@ -35,5 +35,6 @@ SED_SUBST = sed \
         $(NULL)
 
 include Makefile-microyuminst.am
+include Makefile-hif.am
 
 -include $(top_srcdir)/git.mk

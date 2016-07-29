@@ -1,0 +1,3 @@
+[submodule "libhif"]
+	path = libhif
+	url = https://github.com/rpm-software-management/libhif
